@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <title>Meat Loop • Mobile 3D (фикс лифта, дроп мяса, смерть)</title>
+  <title>Meat Loop • Mobile 3D (хижина с балконом, видимый лифт, стопки мяса за спиной)</title>
   <style>
     html, body { height:100%; margin:0; background:#0b1220; color:#e5e7eb; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,system-ui,sans-serif; }
     canvas { display:block; touch-action:none; }
@@ -26,7 +26,7 @@
     <div class="row">Money: <b id="mny">0</b> • Carry: <b id="car">0</b>/<b id="cap">20</b> • Queue↑: <b id="que">0</b></div>
     <div class="row" style="gap:6px; margin-top:6px;">HP: <div class="bar"><div id="php"></div></div></div>
   </div>
-  <div id="tip">Встань на <b>квадратную платформу</b> у хижины — это лифт. С грузом вверх не повезёт. Круг на земле — <b>сброс вниз</b>.</div>
+  <div id="tip">Лифт теперь <b>спереди</b> у балкона хижины. С грузом вверх не повезёт. За спиной видно <b>стопки мяса</b>.</div>
   <div id="joy"><div class="knob"></div></div>
   <div id="dead"><div class="panel"><h1>Ты умер</h1><p>Респавн через секунду у хижины</p></div></div>
 
@@ -43,19 +43,19 @@
 
     const scene=new THREE.Scene();
     scene.background=new THREE.Color(0x0b1220);
-    scene.fog=new THREE.Fog(0x0b1220,12,50);
+    scene.fog=new THREE.Fog(0x0b1220,14,60);
 
     const camera=new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 200);
-    camera.position.set(0,12,16);
-    let camTarget=new THREE.Vector3(-9,2,0);
-    function updateCamera(){ camera.position.lerp(new THREE.Vector3(camTarget.x, camTarget.y+10, camTarget.z+14),0.18); camera.lookAt(camTarget); }
+    camera.position.set(0,13.5,18);
+    let camTarget=new THREE.Vector3(-9,3,2);
+    function updateCamera(){ camera.position.lerp(new THREE.Vector3(camTarget.x, camTarget.y+10.5, camTarget.z+15.5),0.18); camera.lookAt(camTarget); }
     window.addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
 
     scene.add(new THREE.AmbientLight(0xffffff,.55));
-    const dl=new THREE.DirectionalLight(0xffffff,1.1); dl.position.set(6,12,6); dl.castShadow=true; dl.shadow.mapSize.set(1024,1024); scene.add(dl);
+    const dl=new THREE.DirectionalLight(0xffffff,1.05); dl.position.set(6,14,8); dl.castShadow=true; dl.shadow.mapSize.set(1024,1024); scene.add(dl);
     scene.add(new THREE.HemisphereLight(0x88aaff,0x223355,.25));
 
-    const WORLD={w:36,h:24}, hutY=1.8;
+    const WORLD={w:40,h:28}, hutY=3.2;
 
     // Ground and grid
     const floorLow=new THREE.Mesh(new THREE.PlaneGeometry(WORLD.w,WORLD.h), new THREE.MeshStandardMaterial({color:'#0b1220'}));
@@ -66,52 +66,89 @@
     gridGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(lines),3));
     const grid=new THREE.LineSegments(gridGeo, new THREE.LineBasicMaterial({color:'#162033'})); grid.position.y=0.01; scene.add(grid);
 
-    // Hut plateau
-    const plateau=new THREE.Mesh(new THREE.BoxGeometry(14,0.6,10), new THREE.MeshStandardMaterial({color:'#0f172a'}));
-    plateau.position.set(-9,hutY,0); plateau.castShadow=true; plateau.receiveShadow=true; scene.add(plateau);
+    // Hut: floor, walls, balcony
+    const hut = new THREE.Group(); scene.add(hut);
+    const hutFloor = new THREE.Mesh(new THREE.BoxGeometry(14, 0.6, 10), new THREE.MeshStandardMaterial({color:'#0f172a'}));
+    hutFloor.position.set(-9, hutY, 0); hutFloor.castShadow=true; hutFloor.receiveShadow=true; hut.add(hutFloor);
 
-    // Grill marker
-    const grillBase=new THREE.Mesh(new THREE.BoxGeometry(2.2,0.6,1.2), new THREE.MeshStandardMaterial({color:'#3b82f6'}));
-    grillBase.position.set(-9,hutY+0.6,0); grillBase.castShadow=true; grillBase.receiveShadow=true; scene.add(grillBase);
+    // Walls (thin boxes), front has opening to balcony
+    const wallMat = new THREE.MeshStandardMaterial({color:'#111827'});
+    const wallThickness = 0.25, wallH = 2.2;
+    const backWall = new THREE.Mesh(new THREE.BoxGeometry(14, wallH, wallThickness), wallMat); backWall.position.set(-9, hutY + wallH/2 + 0.3, -5); backWall.castShadow=true; hut.add(backWall);
+    const leftWall = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, wallH, 10), wallMat); leftWall.position.set(-16, hutY + wallH/2 + 0.3, 0); leftWall.castShadow=true; hut.add(leftWall);
+    const rightWall = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, wallH, 10), wallMat); rightWall.position.set(-2, hutY + wallH/2 + 0.3, 0); rightWall.castShadow=true; hut.add(rightWall);
+    // front short segments leaving gap for balcony
+    const frontLeft = new THREE.Mesh(new THREE.BoxGeometry(5, wallH, wallThickness), wallMat); frontLeft.position.set(-13.5, hutY + wallH/2 + 0.3, 5); frontLeft.castShadow=true; hut.add(frontLeft);
+    const frontRight = new THREE.Mesh(new THREE.BoxGeometry(5, wallH, wallThickness), wallMat); frontRight.position.set(-4.5, hutY + wallH/2 + 0.3, 5); frontRight.castShadow=true; hut.add(frontRight);
 
-    // Elevator
-    const elevator={x:-5.5,z:0,y:hutY+0.1,state:'idle',t:0};
-    const liftMesh=new THREE.Mesh(new THREE.BoxGeometry(2.2,0.3,2.2), new THREE.MeshStandardMaterial({color:'#475569'}));
+    // Balcony platform (extends towards camera, z positive)
+    const balcony = new THREE.Mesh(new THREE.BoxGeometry(6, 0.4, 4), new THREE.MeshStandardMaterial({color:'#1f2937'}));
+    balcony.position.set(-9, hutY+0.5, 5.8); balcony.castShadow=true; balcony.receiveShadow=true; hut.add(balcony);
+    // Simple rails on balcony sides
+    const railMat = new THREE.MeshStandardMaterial({color:'#334155'});
+    const railL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.8, 4), railMat); railL.position.set(-12, hutY+1.1, 5.8); hut.add(railL);
+    const railR = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.8, 4), railMat); railR.position.set(-6, hutY+1.1, 5.8); hut.add(railR);
+
+    // Grill on hut floor
+    const grillBase=new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.6, 1.2), new THREE.MeshStandardMaterial({color:'#3b82f6'}));
+    grillBase.position.set(-12.5, hutY+0.6, -2.5); grillBase.castShadow=true; grillBase.receiveShadow=true; hut.add(grillBase);
+
+    // Elevator in front of balcony (clearly visible)
+    const elevator={x:-9, z: 8.2, y: hutY+0.1, state:'idle', t:0};
+    const liftMesh=new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.3, 2.4), new THREE.MeshStandardMaterial({color:'#64748b'}));
     liftMesh.castShadow=true; liftMesh.receiveShadow=true; scene.add(liftMesh);
+    // vertical guide
     const pillar=new THREE.Mesh(new THREE.BoxGeometry(0.3, hutY+0.2, 0.3), new THREE.MeshStandardMaterial({color:'#1f2937'}));
     pillar.position.set(elevator.x, (hutY+0.2)/2, elevator.z); pillar.castShadow=true; pillar.receiveShadow=true; scene.add(pillar);
 
-    // Drop zone
-    const dropPos={x:8,z:0};
-    const dropOuter=new THREE.Mesh(new THREE.RingGeometry(1.0,1.4,48), new THREE.MeshBasicMaterial({color:'#cbd5e1'}));
+    // Drop zone on ground
+    const dropPos={x:10,z:0};
+    const dropOuter=new THREE.Mesh(new THREE.RingGeometry(1.0,1.45,48), new THREE.MeshBasicMaterial({color:'#cbd5e1'}));
     dropOuter.rotation.x=-Math.PI/2; dropOuter.position.set(dropPos.x,0.02,dropPos.z); scene.add(dropOuter);
     const dropInner=new THREE.Mesh(new THREE.CircleGeometry(0.95,48), new THREE.MeshBasicMaterial({color:'#111827'}));
     dropInner.rotation.x=-Math.PI/2; dropInner.position.set(dropPos.x,0.021,dropPos.z); scene.add(dropInner);
 
-    function makeLabel(text){
-      const canvas=document.createElement('canvas'); const s=256; canvas.width=canvas.height=s;
-      const ctx=canvas.getContext('2d'); ctx.fillStyle='#111827'; ctx.fillRect(0,0,s,s);
-      ctx.fillStyle='#cbd5e1'; ctx.font='bold 42px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText(text, s/2, s/2);
-      const tex=new THREE.CanvasTexture(canvas); tex.anisotropy=4;
-      const mat=new THREE.MeshBasicMaterial({map:tex, transparent:true});
-      const m=new THREE.Mesh(new THREE.PlaneGeometry(1.6,1.6), mat); m.rotation.x=-Math.PI/2; return m;
+    function label(text){
+      const c=document.createElement('canvas'); const s=256; c.width=c.height=s; const g=c.getContext('2d');
+      g.fillStyle='#111827'; g.fillRect(0,0,s,s); g.fillStyle='#cbd5e1'; g.font='bold 42px system-ui'; g.textAlign='center'; g.textBaseline='middle'; g.fillText(text,s/2,s/2);
+      const t=new THREE.CanvasTexture(c); t.anisotropy=4;
+      const m=new THREE.MeshBasicMaterial({map:t, transparent:true}); const mesh=new THREE.Mesh(new THREE.PlaneGeometry(1.6,1.6), m); mesh.rotation.x=-Math.PI/2; return mesh;
     }
-    const dropLabel=makeLabel("СБРОС"); dropLabel.position.set(dropPos.x,0.022,dropPos.z); scene.add(dropLabel);
+    const dropLabel=label("СБРОС"); dropLabel.position.set(dropPos.x,0.022,dropPos.z); scene.add(dropLabel);
 
+    // UI refs
     const $mny=document.getElementById('mny'), $car=document.getElementById('car'), $cap=document.getElementById('cap'), $que=document.getElementById('que'), $php=document.getElementById('php');
     const $dead=document.getElementById('dead');
     $cap.textContent=20;
 
+    // State
     const state={
-      player:{x:-9,y:hutY+0.8,z:0,r:0.6,speed:7.2,carried:0,cap:20,money:5,hp:100,maxhp:100,invul:0,dps:12,atkCd:0,dead:false,respawn:0},
-      meats:[], enemies:[], topQueue:17, keys:Object.create(null), last:performance.now()
+      player:{x:-9, y:hutY+0.9, z:1.5, r:0.6, speed:7.2, carried:0, cap:20, money:5, hp:100, maxhp:100, invul:0, dps:12, atkCd:0, dead:false, respawn:0},
+      meats:[], enemies:[], topQueue:0, keys:Object.create(null), last:performance.now()
     };
-    $mny.textContent=state.player.money; $que.textContent=state.topQueue;
 
+    // Meshes
     const gCapsule=new THREE.CapsuleGeometry(0.35,0.8,4,12);
     const mPlayer=new THREE.MeshStandardMaterial({color:'#38bdf8',roughness:.65,metalness:.1});
     const playerMesh=new THREE.Mesh(gCapsule,mPlayer); playerMesh.castShadow=true; scene.add(playerMesh);
+
+    // Backpack group to show carried meat stacks (behind player)
+    const backpack = new THREE.Group(); backpack.position.set(0, -0.2, -0.55); playerMesh.add(backpack);
+    function refreshBackpack(){
+      // clear
+      while(backpack.children.length) backpack.remove(backpack.children[0]);
+      const count = state.player.carried;
+      const layerH = 0.12, cube = new THREE.BoxGeometry(0.18,0.1,0.18);
+      for(let i=0;i<count;i++){
+        const layer = Math.floor(i/4); // 4 per layer
+        const pos = i%4;
+        const ox = (pos%2===0)? -0.12 : 0.02;
+        const oz = (pos<2)? -0.12 : 0.02;
+        const m = new THREE.Mesh(cube, new THREE.MeshStandardMaterial({color:'#ef4444'}));
+        m.position.set(ox, layer*layerH, oz);
+        m.castShadow=true; backpack.add(m);
+      }
+    }
 
     const gMeat=new THREE.BoxGeometry(0.22,0.16,0.12), mMeat=new THREE.MeshStandardMaterial({color:'#ef4444'});
     const gEnemy=new THREE.SphereGeometry(0.35,18,18), mEnemy=new THREE.MeshStandardMaterial({color:'#f97316'});
@@ -119,11 +156,12 @@
     function makeBar(w=0.7){ const g=new THREE.Group(); const bg=new THREE.Mesh(new THREE.PlaneGeometry(w,0.08), new THREE.MeshBasicMaterial({color:'#7f1d1d'})); const fg=new THREE.Mesh(new THREE.PlaneGeometry(w,0.08), new THREE.MeshBasicMaterial({color:'#22c55e'})); fg.position.set(-w/2,0,0); fg.userData.w=w; g.add(bg); g.add(fg); g.rotation.x=-Math.PI/2; g.position.y=0.95; g.userData.fg=fg; return g; }
     function setBar(gr,ratio){ ratio=clamp(ratio,0,1); gr.userData.fg.scale.x=ratio; gr.userData.fg.position.x=-gr.userData.fg.userData.w/2*(1-ratio); }
 
-    function makeEnemy(x,z){ const mesh=new THREE.Mesh(gEnemy,mEnemy.clone()); mesh.castShadow=true; scene.add(mesh); const bar=makeBar(0.8); mesh.add(bar); return {x,y:0.35,z,r:0.5,speed:5,mesh,bar,hp:30,maxhp:30,state:'patrol',t:0,attackCd:0,dead:false,respawn:0}; }
-    for(let i=0;i<8;i++) state.enemies.push(makeEnemy(rand(0,14),rand(-8,8)));
+    function makeEnemy(x,z){ const mesh=new THREE.Mesh(gEnemy,mEnemy.clone()); mesh.castShadow=true; scene.add(mesh); const bar=makeBar(0.8); mesh.add(bar); return {x,y:0.35,z,r:0.5,speed:5.2,mesh,bar,hp:30,maxhp:30,state:'patrol',t:0,attackCd:0,dead:false,respawn:0}; }
+    for(let i=0;i<8;i++) state.enemies.push(makeEnemy(rand(-2,14),rand(-8,8))); // enemies mostly on right/bottom
 
     function spawnMeatPiece(x,z,vy=2){ const mesh=new THREE.Mesh(gMeat,mMeat); mesh.castShadow=true; scene.add(mesh); const ang=Math.random()*Math.PI*2, s=rand(0.6,1.4); return {x,y:0.3,z,vx:Math.cos(ang)*s,vz:Math.sin(ang)*s,vy,mesh,life:16,pickDelay:0.6}; }
 
+    // Input
     window.addEventListener('keydown',e=> state.keys[e.key.toLowerCase()]=true);
     window.addEventListener('keyup',e=> state.keys[e.key.toLowerCase()]=false);
 
@@ -134,8 +172,9 @@
     function joyReset(){ knob.style.transform=''; joyVec.x=0; joyVec.y=0; joyId=null; }
     joy.addEventListener('touchend',()=>joyReset()); joy.addEventListener('touchcancel',()=>joyReset());
 
+    // Death/respawn
     function killPlayer(){ if(state.player.dead) return; state.player.dead=true; state.player.respawn=1.0; document.getElementById('dead').style.display='flex'; }
-    function respawnPlayer(){ state.player.dead=false; document.getElementById('dead').style.display='none'; state.player.x=-9; state.player.z=0; state.player.y=hutY+0.8; state.player.hp=state.player.maxhp; state.player.carried=0; document.getElementById('car').textContent='0'; }
+    function respawnPlayer(){ state.player.dead=false; document.getElementById('dead').style.display='none'; state.player.x=-9; state.player.z=1.5; state.player.y=hutY+0.9; state.player.hp=state.player.maxhp; state.player.carried=0; document.getElementById('car').textContent='0'; refreshBackpack(); }
 
     function tick(){
       requestAnimationFrame(tick);
@@ -144,6 +183,7 @@
 
       if(p.dead){ p.respawn-=dt; if(p.respawn<=0) respawnPlayer(); renderer.render(scene,camera); return; }
 
+      // Movement
       let dx=0,dz=0;
       if(state.keys['a']||state.keys['arrowleft'])dx-=1;
       if(state.keys['d']||state.keys['arrowright'])dx+=1;
@@ -156,23 +196,30 @@
       let nz=p.z+(dz/L)*p.speed*speedPenalty*dt;
       nx=clamp(nx,-WORLD.w*0.5+1, WORLD.w*0.5-1); nz=clamp(nz,-WORLD.h*0.5+1, WORLD.h*0.5-1);
 
-      const nearLiftTop=(Math.hypot(nx-elevator.x,nz-elevator.z)<1.0) && p.y>hutY;
-      const nearLiftBot=(Math.hypot(nx-elevator.x,nz-elevator.z)<1.0) && p.y<1.0;
+      // Elevator logic
+      const nearLiftTop=(Math.hypot(nx-elevator.x,nz-elevator.z)<1.1) && p.y>hutY;
+      const nearLiftBot=(Math.hypot(nx-elevator.x,nz-elevator.z)<1.1) && p.y<1.0;
       if(elevator.state==='idle'){ if(nearLiftTop){elevator.state='down';} else if(nearLiftBot && p.carried===0){elevator.state='up';} }
-      if(elevator.state==='down'){ elevator.y=Math.max(0.1, elevator.y-2.3*dt); if(elevator.y<=0.11){elevator.state='pause';elevator.t=0;} }
-      else if(elevator.state==='up'){ elevator.y=Math.min(hutY+0.1, elevator.y+2.3*dt); if(elevator.y>=hutY+0.1){elevator.state='pause';elevator.t=0;} }
+      if(elevator.state==='down'){ elevator.y=Math.max(0.1, elevator.y-2.4*dt); if(elevator.y<=0.11){elevator.state='pause';elevator.t=0;} }
+      else if(elevator.state==='up'){ elevator.y=Math.min(hutY+0.1, elevator.y+2.4*dt); if(elevator.y>=hutY+0.1){elevator.state='pause';elevator.t=0;} }
       else if(elevator.state==='pause'){ elevator.t+=dt; if(elevator.t>0.5) elevator.state='idle'; }
       liftMesh.position.set(elevator.x, elevator.y, elevator.z);
 
-      const onLift=Math.hypot(nx-elevator.x,nz-elevator.z)<0.9;
+      // Stick to lift square only
+      const onLift=Math.hypot(nx-elevator.x,nz-elevator.z)<1.0;
       if(onLift) p.y=elevator.y+0.8;
-      else p.y = (nx<-2 && Math.abs(nz)<5)? (hutY+0.8) : 0.8;
+      else {
+        // on hut if over its bounds (including balcony)
+        const overHut = (nx>-16 && nx<-2 && nz>-5 && nz<9);
+        p.y = overHut ? (hutY+0.8) : 0.8;
+      }
 
-      if(elevator.state==='pause' && elevator.y>hutY && p.carried>0 && onLift){ nx = elevator.x + 1.2; }
+      if(elevator.state==='pause' && elevator.y>hutY && p.carried>0 && onLift){ nx = elevator.x + 1.4; }
 
       p.x=nx; p.z=nz; playerMesh.position.set(p.x,p.y,p.z);
-      camTarget.lerp(new THREE.Vector3(p.x,p.y*0.5,p.z),0.2); updateCamera();
+      camTarget.lerp(new THREE.Vector3(p.x,p.y*0.5+0.6,p.z+0.6),0.22); updateCamera();
 
+      // Auto-attack on bottom
       p.atkCd=Math.max(0,p.atkCd-dt);
       if(p.y<1.5){
         let target=null, best=9e9;
@@ -187,6 +234,7 @@
         }
       }
 
+      // Enemies AI
       for(const e of state.enemies){
         if(e.dead){ e.respawn-=dt; if(e.respawn<=0){ e.dead=false; e.hp=e.maxhp; e.mesh.visible=true; e.mesh.scale.set(1,1,1);} continue; }
         e.t+=dt; e.attackCd=Math.max(0,e.attackCd-dt);
@@ -204,6 +252,8 @@
         e.mesh.scale.lerp(new THREE.Vector3(1,1,1), 0.12);
       }
 
+      // Meat physics + pickup with cooldown; update backpack
+      let picked = 0;
       for(let i=state.meats.length-1;i>=0;i--){
         const m=state.meats[i];
         m.vy-=9.8*dt; m.x+=m.vx*dt; m.z+=m.vz*dt; m.y+=m.vy*dt;
@@ -211,25 +261,37 @@
         m.life-=dt; m.pickDelay=Math.max(0,m.pickDelay-dt);
         if(m.life<=0){ scene.remove(m.mesh); state.meats.splice(i,1); continue; }
         m.mesh.position.set(m.x,m.y,m.z);
-        if(p.y<1.5 && m.pickDelay<=0 && Math.hypot(m.x-p.x,m.z-p.z)<0.9 && p.carried<p.cap){
-          scene.remove(m.mesh); state.meats.splice(i,1); p.carried++; document.getElementById('car').textContent=p.carried;
+        if(p.y<1.5 && m.pickDelay<=0 && Math.hypot(m.x-p.x,m.z-p.z)<0.95 && p.carried<p.cap){
+          scene.remove(m.mesh); state.meats.splice(i,1); p.carried++; picked++; 
         }
       }
+      if(picked>0){ document.getElementById('car').textContent=p.carried; refreshBackpack(); }
 
-      const inDrop = (p.y<1.5 && Math.hypot(p.x-dropPos.x, p.z-dropPos.z)<1.2);
+      // Drop zone
+      const inDrop = (p.y<1.5 && Math.hypot(p.x-dropPos.x, p.z-dropPos.z)<1.25);
       dropOuter.material.color.set(inDrop? '#e2e8f0' : '#cbd5e1');
       if(inDrop && p.carried>0){
-        state.topQueue += p.carried; p.carried=0; document.getElementById('car').textContent='0'; document.getElementById('que').textContent=state.topQueue;
+        state.topQueue += p.carried; p.carried=0; document.getElementById('car').textContent='0'; document.getElementById('que').textContent=state.topQueue; refreshBackpack();
       }
 
       if(state.topQueue>0){ state.topQueue=Math.max(0, state.topQueue-2*dt); if(state.topQueue===0){ state.player.money+=5; } document.getElementById('que').textContent=state.topQueue.toFixed(0); }
       document.getElementById('mny').textContent=state.player.money;
 
+      // Player visuals
       p.invul=Math.max(0,p.invul-dt);
       playerMesh.material.emissive=new THREE.Color(p.invul>0?0x224466:0x000000);
       document.getElementById('php').style.width=(p.hp/p.maxhp*100).toFixed(0)+'%';
+
+      playerMesh.rotation.y += (dx!==0||dz!==0 ? 0.0 : 0.0); // keep simple
       renderer.render(scene,camera);
     }
+    // Initial placements
+    function syncPositions(){
+      liftMesh.position.set(elevator.x, elevator.y, elevator.z);
+      playerMesh.position.set(state.player.x, state.player.y, state.player.z);
+      refreshBackpack();
+    }
+    syncPositions();
     tick();
   </script>
 </body>
