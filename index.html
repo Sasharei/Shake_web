@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>Meat Loop • All-in-one (hut+elevator+stacks+grill+drones)</title>
+<title>Meat Loop • All‑in‑one (doorway fixed)</title>
 <style>
   html, body { height:100%; margin:0; background:#0b1220; color:#e5e7eb; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,system-ui,sans-serif; }
   canvas { display:block; touch-action:none; }
@@ -60,6 +60,8 @@
   // Ground + simple grid
   const floorLow=new THREE.Mesh(new THREE.PlaneGeometry(WORLD.w,WORLD.h), new THREE.MeshStandardMaterial({color:'#0b1220'}));
   floorLow.rotation.x=-Math.PI/2; floorLow.receiveShadow=true; scene.add(floorLow);
+
+  // Simple grid lines
   const gridGeo=new THREE.BufferGeometry(); const lines=[];
   for(let x=-WORLD.w/2;x<=WORLD.w/2;x+=WORLD.w/12){lines.push(x,0,-WORLD.h/2,x,0,WORLD.h/2)}
   for(let z=-WORLD.h/2;z<=WORLD.h/2;z+=WORLD.h/12){lines.push(-WORLD.w/2,0,z,WORLD.w/2,0,z)}
@@ -95,7 +97,6 @@
     const base=new THREE.Mesh(new THREE.BoxGeometry(2,0.4,1.6), new THREE.MeshStandardMaterial({color:'#0b1325'}));
     base.position.set(x, hutY+0.6, z); base.castShadow=true; base.receiveShadow=true; scene.add(base);
     const cap=new THREE.Mesh(new THREE.BoxGeometry(1.6,0.2,1.2), colorMat); cap.position.set(x, hutY+0.9, z); cap.castShadow=true; cap.receiveShadow=true; scene.add(cap);
-    // label
     const c=document.createElement('canvas'); const s=128; c.width=c.height=s; const g=c.getContext('2d'); g.fillStyle='#0b1325'; g.fillRect(0,0,s,s); g.fillStyle='#cbd5e1'; g.font='bold 28px system-ui'; g.textAlign='center'; g.textBaseline='middle'; g.fillText(label,s/2,s/2);
     const tex=new THREE.CanvasTexture(c); const mat=new THREE.MeshBasicMaterial({map:tex, transparent:true}); const pl=new THREE.Mesh(new THREE.PlaneGeometry(1.6,0.6), mat); pl.position.set(x, hutY+1.4, z); scene.add(pl);
     return {pos:new THREE.Vector3(x,hutY+0.9,z)};
@@ -119,7 +120,7 @@
   dropInner.rotation.x=-Math.PI/2; dropInner.position.set(dropPos.x,0.021,dropPos.z); scene.add(dropInner);
   let dropTimer=0; const dropNeeded=3.0;
 
-  // Simple Stack manager
+  // Stack helper
   class Stack {
     constructor(color, cubeSize=[0.18,0.1,0.18]){
       this.group=new THREE.Group(); this.count=0;
@@ -132,15 +133,13 @@
       if(n===this.count) return;
       while(this.group.children.length<n){
         const m=new THREE.Mesh(this.cubeGeo, new THREE.MeshStandardMaterial({color:this.color}));
-        m.castShadow=true; m.receiveShadow=true;
-        this.group.add(m);
+        m.castShadow=true; m.receiveShadow=true; this.group.add(m);
       }
       while(this.group.children.length>n) this.group.remove(this.group.children[this.group.children.length-1]);
       const layerH=0.12;
       for(let i=0;i<this.group.children.length;i++){
         const layer=Math.floor(i/4), pos=i%4;
-        const ox = (pos%2===0)? -0.12 : 0.02;
-        const oz = (pos<2)? -0.12 : 0.02;
+        const ox=(pos%2===0)?-0.12:0.02, oz=(pos<2)?-0.12:0.02;
         this.group.children[i].position.set(ox, layer*layerH, oz);
       }
       this.count=n;
@@ -155,14 +154,14 @@
   const $mny=document.getElementById('mny'), $car=document.getElementById('car'), $cap=document.getElementById('cap'), $que=document.getElementById('que'), $php=document.getElementById('php');
   $cap.textContent=state.player.cap;
 
-  // Player mesh + backpack
+  // Player + backpack
   const gCapsule=new THREE.CapsuleGeometry(0.35,0.8,4,12);
   const mPlayer=new THREE.MeshStandardMaterial({color:'#38bdf8',roughness:.65,metalness:.1});
   const playerMesh=new THREE.Mesh(gCapsule,mPlayer); playerMesh.castShadow=true; scene.add(playerMesh);
   const backpack = new Stack('#ef4444'); backpack.attachTo(playerMesh); backpack.setPosition(0,-0.2,-0.55);
   function refreshBackpack(){ backpack.setCount(state.player.carried); }
 
-  // Storages stacks
+  // Storages
   const rawStack = new Stack('#ef4444'); rawStack.setPosition(rawStation.pos.x, rawStation.pos.y+0.05, rawStation.pos.z); scene.add(rawStack.group);
   const grilledStack = new Stack('#f59e0b'); grilledStack.setPosition(grillStation.pos.x, grillStation.pos.y+0.05, grillStation.pos.z); scene.add(grilledStack.group);
   const moneyStack = new Stack('#22c55e', [0.18,0.06,0.18]); moneyStack.setPosition(moneyStation.pos.x, moneyStation.pos.y+0.05, moneyStation.pos.z); scene.add(moneyStack.group);
@@ -202,14 +201,20 @@
   function killPlayer(){ if(state.player.dead) return; state.player.dead=true; state.player.respawn=1.0; document.getElementById('dead').style.display='flex'; }
   function respawnPlayer(){ state.player.dead=false; document.getElementById('dead').style.display='none'; state.player.x=-9; state.player.z=1.5; state.player.y=hutY+0.9; state.player.hp=state.player.maxhp; state.player.carried=0; $car.textContent='0'; refreshBackpack(); }
 
+  // --- Collision helpers (FIXED DOORWAY) ---
   function hutBounds(x,z){ return (x>-16 && x<-2 && z>-5 && z<9); }
   function blockByWalls(nx,nz){
     const doorHalfW=1.6;
-    const inDoor = (Math.abs(nx+9) < doorHalfW) && (nz>4.6 && nz<6.6);
     const insideRoom = (nx>-16 && nx<-2 && nz>-5 && nz<5);
-    if(insideRoom && !inDoor){
+    if(insideRoom){
+      const inDoorX = (Math.abs(nx+9) < doorHalfW);
       nx = clamp(nx, -16+0.6, -2-0.6);
-      nz = clamp(nz, -5+0.6, 5-0.6);
+      // allow passing forward through the doorway up to z≈6.2
+      if(inDoorX){
+        nz = clamp(nz, -5+0.6, 6.2);
+      } else {
+        nz = clamp(nz, -5+0.6, 4.4);
+      }
     }
     return {x:nx,z:nz};
   }
@@ -248,12 +253,12 @@
     else p.y = hutBounds(nx,nz) ? (hutY+0.8) : 0.8;
 
     if(p.y>hutY){ const res=blockByWalls(nx,nz); nx=res.x; nz=res.z; }
-    if(elevator.state==='pause' && elevator.y>hutY && p.carried>0 && onLift){ nx = elevator.x + 1.4; } // push off at top with cargo
+    if(elevator.state==='pause' && elevator.y>hutY && p.carried>0 && onLift){ nx = elevator.x + 1.4; }
 
     p.x=nx; p.z=nz; playerMesh.position.set(p.x,p.y,p.z);
     camTarget.lerp(new THREE.Vector3(p.x,p.y*0.5+0.6,p.z+0.6),0.22); updateCamera();
 
-    // Combat (only at bottom level)
+    // Combat (bottom only)
     p.atkCd=Math.max(0,p.atkCd-dt);
     if(p.y<1.5){
       let target=null, best=9e9;
@@ -327,7 +332,7 @@
       if(k>=1){ scene.remove(it.mesh); state.flyingMeat.splice(i,1); state.rawStored++; rawStack.setCount(state.rawStored); }
     }
 
-    // Grill: raw -> grilled
+    // Grill
     if(state.rawStored>0){
       if(!state._grillT) state._grillT=0;
       state._grillT += dt;
