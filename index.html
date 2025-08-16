@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Meat Loop • Mobile 3D (лифт, авто-атака, мясо с врагов)</title>
+<style>
+  html, body { height:100%; margin:0; background:#0b1220; color:#e5e7eb; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,system-ui,sans-serif; }
+  canvas { display:block; touch-action:none; }
+  #hud { position:fixed; left:12px; top:12px; background:rgba(2,6,23,.7); border:1px solid #334155; border-radius:12px; padding:10px 12px; font-size:12px; box-shadow:0 8px 24px rgba(0,0,0,.35); z-index:10; }
+  #hud .row { display:flex; gap:10px; align-items:center; }
+  .bar { width:140px; height:8px; background:#7f1d1d; border-radius:6px; overflow:hidden; border:1px solid #ef4444; }
+  .bar > div { height:100%; width:100%; background:#22c55e; }
+  #tip { position:fixed; left:50%; transform:translateX(-50%); bottom:8px; opacity:.8; font-size:12px; z-index:10; text-align:center; padding:4px 8px; background:rgba(2,6,23,.5); border:1px solid #334155; border-radius:8px;}
+  #joy { position:fixed; left:16px; bottom:16px; width:140px; height:140px; border-radius:50%; background:rgba(15,23,42,.35); border:1px solid #334155; touch-action:none; z-index:11; }
+  #joy .knob { position:absolute; left:50%; top:50%; width:64px; height:64px; margin:-32px 0 0 -32px; border-radius:50%; background:rgba(30,41,59,.9); border:2px solid #475569; }
+  @media (min-width:900px){ #joy{width:160px;height:160px} #joy .knob{width:70px;height:70px;margin:-35px 0 0 -35px} }
+</style>
+</head>
+<body>
+  <div id="hud">
+    <div class="row" style="font-weight:600; margin-bottom:4px;">Meat Loop • Mobile 3D</div>
+    <div class="row">Money: <b id="mny">0</b> • Carry: <b id="car">0</b> / <b id="cap">20</b> • Queue↑: <b id="que">0</b></div>
+    <div class="row" style="gap:6px; margin-top:6px;">HP: <div class="bar"><div id="php"></div></div></div>
+  </div>
+  <div id="tip">Стань на лифт у хижины, спустись, авто-атакуй врагов, мясо падает кусками. Подойди к кругу внизу — мясо отправится наверх. С грузом лифт не поднимает.</div>
+  <div id="joy"><div class="knob"></div></div>
+
+  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+  <script>
+    const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+    const rand=(a,b)=>a+Math.random()*(b-a);
+    const DPR=Math.min(2,window.devicePixelRatio||1);
+
+    const renderer=new THREE.WebGLRenderer({antialias:true});
+    renderer.setPixelRatio(DPR);
+    renderer.setSize(innerWidth,innerHeight);
+    renderer.shadowMap.enabled=true;
+    document.body.appendChild(renderer.domElement);
+
+    const scene=new THREE.Scene();
+    scene.background=new THREE.Color(0x0b1220);
+    scene.fog=new THREE.Fog(0x0b1220,12,50);
+
+    const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,0.1,200);
+    camera.position.set(0,12,16);
+    let camTarget=new THREE.Vector3(-9,2,0);
+    function updateCamera(){
+      camera.position.lerp(new THREE.Vector3(camTarget.x, camTarget.y+10, camTarget.z+14),0.18);
+      camera.lookAt(camTarget);
+    }
+    window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+
+    scene.add(new THREE.AmbientLight(0xffffff,.55));
+    const dl=new THREE.DirectionalLight(0xffffff,1.1); dl.position.set(6,12,6); dl.castShadow=true; dl.shadow.mapSize.set(1024,1024); scene.add(dl);
+    scene.add(new THREE.HemisphereLight(0x88aaff,0x223355,.25));
+
+    const WORLD={w:36,h:24}, hutY=1.8;
+
+    const floorLow=new THREE.Mesh(new THREE.PlaneGeometry(WORLD.w,WORLD.h), new THREE.MeshStandardMaterial({color:'#0b1220'}));
+    floorLow.rotation.x=-Math.PI/2; floorLow.receiveShadow=true; scene.add(floorLow);
+
+    const gridGeo=new THREE.BufferGeometry(); const lines=[];
+    for(let x=-WORLD.w/2;x<=WORLD.w/2;x+=WORLD.w/12){lines.push(x,0,-WORLD.h/2,x,0,WORLD.h/2)}
+    for(let z=-WORLD.h/2;z<=WORLD.h/2;z+=WORLD.h/12){lines.push(-WORLD.w/2,0,z,WORLD.w/2,0,z)}
+    gridGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(lines),3));
+    const grid=new THREE.LineSegments(gridGeo, new THREE.LineBasicMaterial({color:'#162033'})); grid.position.y=0.01; scene.add(grid);
+
+    const plateau=new THREE.Mesh(new THREE.BoxGeometry(14,0.6,10), new THREE.MeshStandardMaterial({color:'#0f172a'}));
+    plateau.position.set(-9,hutY,0); plateau.castShadow=true; plateau.receiveShadow=true; scene.add(plateau);
+
+    const grillBase=new THREE.Mesh(new THREE.BoxGeometry(2.2,0.6,1.2), new THREE.MeshStandardMaterial({color:'#3b82f6'}));
+    grillBase.position.set(-9,hutY+0.6,0); grillBase.castShadow=true; grillBase.receiveShadow=true; scene.add(grillBase);
+
+    const elevator={x:-5.5,z:0,y:hutY+0.1,state:'idle',t:0};
+    const liftMesh=new THREE.Mesh(new THREE.BoxGeometry(2.2,0.3,2.2), new THREE.MeshStandardMaterial({color:'#334155'}));
+    liftMesh.position.set(elevator.x,elevator.y,elevator.z); liftMesh.castShadow=true; liftMesh.receiveShadow=true; scene.add(liftMesh);
+
+    const dropRing=new THREE.Mesh(new THREE.RingGeometry(0.9,1.3,32), new THREE.MeshBasicMaterial({color:'#94a3b8'}));
+    dropRing.rotation.x=-Math.PI/2; dropRing.position.set(8,0.02,0); scene.add(dropRing);
+    const dropFill=new THREE.Mesh(new THREE.CircleGeometry(0.86,32), new THREE.MeshBasicMaterial({color:'#1f2937'}));
+    dropFill.rotation.x=-Math.PI/2; dropFill.position.set(8,0.021,0); scene.add(dropFill);
+
+    const $mny=document.getElementById('mny'), $car=document.getElementById('car'), $cap=document.getElementById('cap'), $que=document.getElementById('que'), $php=document.getElementById('php');
+
+    const state={ player:{x:-9,y:hutY+0.8,z:0,r:0.6,speed:7.5,carried:0,cap:20,money:0,hp:100,maxhp:100,invul:0,dps:12,atkCd:0}, meats:[], enemies:[], topQueue:0, keys:Object.create(null), last:performance.now() };
+    $cap.textContent = state.player.cap;
+
+    const gCapsule=new THREE.CapsuleGeometry(0.35,0.8,4,12);
+    const mPlayer=new THREE.MeshStandardMaterial({color:'#38bdf8',roughness:.65,metalness:.1});
+    const playerMesh=new THREE.Mesh(gCapsule,mPlayer); playerMesh.castShadow=true; scene.add(playerMesh);
+
+    const gMeat=new THREE.BoxGeometry(0.22,0.16,0.12), mMeat=new THREE.MeshStandardMaterial({color:'#ef4444'});
+    const gEnemy=new THREE.SphereGeometry(0.35,18,18), mEnemy=new THREE.MeshStandardMaterial({color:'#f97316'});
+
+    function makeBar(w=0.7){ const g=new THREE.Group(); const bg=new THREE.Mesh(new THREE.PlaneGeometry(w,0.08), new THREE.MeshBasicMaterial({color:'#7f1d1d'})); const fg=new THREE.Mesh(new THREE.PlaneGeometry(w,0.08), new THREE.MeshBasicMaterial({color:'#22c55e'})); fg.position.set(-w/2,0,0); fg.userData.w=w; g.add(bg); g.add(fg); g.rotation.x=-Math.PI/2; g.position.y=0.95; g.userData.fg=fg; return g; }
+    function setBar(gr,ratio){ ratio=clamp(ratio,0,1); gr.userData.fg.scale.x=ratio; gr.userData.fg.position.x=-gr.userData.fg.userData.w/2*(1-ratio); }
+
+    function makeEnemy(x,z){ const mesh=new THREE.Mesh(gEnemy,mEnemy.clone()); mesh.castShadow=true; scene.add(mesh); const bar=makeBar(0.8); mesh.add(bar); return {x,y:0.35,z,r:0.5,speed:5,mesh,bar,hp:30,maxhp:30,state:'patrol',t:0,attackCd:0,dead:false,respawn:0}; }
+    for(let i=0;i<8;i++) state.enemies.push(makeEnemy(rand(0,14),rand(-8,8)));
+
+    function spawnMeatPiece(x,z,vy=2){ const mesh=new THREE.Mesh(gMeat,mMeat); mesh.castShadow=true; scene.add(mesh); const ang=Math.random()*Math.PI*2,s=rand(0.4,1.2); return {x,y:0.3,z,vx:Math.cos(ang)*s,vz:Math.sin(ang)*s,vy,mesh,life:12}; }
+
+    window.addEventListener('keydown',e=>state.keys[e.key.toLowerCase()]=true);
+    window.addEventListener('keyup',e=>state.keys[e.key.toLowerCase()]=false);
+
+    const joy=document.getElementById('joy'), knob=joy.querySelector('.knob'); let joyId=null, joyVec={x:0,y:0};
+    function joySet(dx,dy){ const r=Math.min(joy.clientWidth,joy.clientHeight)/2-6; const L=Math.hypot(dx,dy); const k=L>r?r/L:1; knob.style.transform=`translate(${dx*k}px,${dy*k}px)`; joyVec.x=(dx*k)/r; joyVec.y=(dy*k)/r; }
+    joy.addEventListener('touchstart',(e)=>{const t=e.changedTouches[0];joyId=t.identifier;const r=joy.getBoundingClientRect();joySet(t.clientX-(r.left+r.width/2), t.clientY-(r.top+r.height/2));},{passive:false});
+    joy.addEventListener('touchmove',(e)=>{for(const t of e.changedTouches){if(t.identifier===joyId){const r=joy.getBoundingClientRect();joySet(t.clientX-(r.left+r.width/2), t.clientY-(r.top+r.height/2)); e.preventDefault();}}},{passive:false});
+    function joyReset(){ knob.style.transform=''; joyVec.x=0; joyVec.y=0; joyId=null; }
+    joy.addEventListener('touchend',()=>joyReset()); joy.addEventListener('touchcancel',()=>joyReset());
+
+    function tick(){
+      requestAnimationFrame(tick);
+      const now=performance.now(); let dt=Math.min(1/50,(now-state.last)/1000); state.last=now;
+
+      const p=state.player;
+      let dx=0,dz=0;
+      if(state.keys['a']||state.keys['arrowleft'])dx-=1;
+      if(state.keys['d']||state.keys['arrowright'])dx+=1;
+      if(state.keys['w']||state.keys['arrowup'])dz-=1;
+      if(state.keys['s']||state.keys['arrowdown'])dz+=1;
+      dx+=joyVec.x; dz+=joyVec.y;
+      const L=Math.hypot(dx,dz)||1;
+      const speedPenalty=1-Math.min(0.6,(p.carried/p.cap)*0.5);
+      let nx=p.x+(dx/L)*p.speed*speedPenalty*dt;
+      let nz=p.z+(dz/L)*p.speed*speedPenalty*dt;
+      nx=clamp(nx,-WORLD.w*0.5+1, WORLD.w*0.5-1);
+      nz=clamp(nz,-WORLD.h*0.5+1, WORLD.h*0.5-1);
+
+      const onHut=(Math.abs(nx+9)<7)&&(Math.abs(nz)<5)&&(p.y>hutY);
+      const nearLiftTop=(Math.hypot(nx-elevator.x,nz-elevator.z)<1.2)&&p.y>hutY;
+      const nearLiftBot=(Math.hypot(nx-elevator.x,nz-elevator.z)<1.2)&&p.y<1.0;
+
+      if(elevator.state==='idle'){
+        if(nearLiftTop){elevator.state='down';}
+        else if(nearLiftBot && p.carried===0){elevator.state='up';}
+      }
+      if(elevator.state==='down'){elevator.y=Math.max(0.1,elevator.y-2.2*dt); if(elevator.y<=0.11){elevator.state='pause';elevator.t=0;}}
+      else if(elevator.state==='up'){elevator.y=Math.min(hutY+0.1,elevator.y+2.2*dt); if(elevator.y>=hutY+0.1){elevator.state='pause';elevator.t=0;}}
+      else if(elevator.state==='pause'){elevator.t+=dt; if(elevator.t>0.4)elevator.state='idle';}
+      liftMesh.position.y=elevator.y;
+
+      const standingOnLift=Math.hypot(nx-elevator.x,nz-elevator.z)<1.0 && Math.abs((p.y-0.8)-elevator.y)<0.6;
+      if(standingOnLift) p.y=elevator.y+0.8; else p.y=onHut?hutY+0.8:0.8;
+
+      p.x=nx;p.z=nz; playerMesh.position.set(p.x,p.y,p.z);
+      camTarget.lerp(new THREE.Vector3(p.x,p.y*0.5,p.z),0.2); updateCamera();
+
+      p.atkCd=Math.max(0,p.atkCd-dt);
+      if(p.y<1.5){
+        let target=null, best=9e9;
+        for(const e of state.enemies){ if(e.dead) continue; const d=Math.hypot(e.x-p.x,e.z-p.z); if(d<best){best=d; target=e;} }
+        if(target && best<2.2 && p.atkCd<=0){
+          p.atkCd=0.25; target.hp -= p.dps*0.25; target.mesh.scale.set(1.2,1.2,1.2);
+          if(target.hp<=0){ target.dead=true; target.respawn=4; const count=Math.floor(rand(2,5)); for(let i=0;i<count;i++) state.meats.push(spawnMeatPiece(target.x,target.z,rand(2,3.5))); }
+        }
+      }
+
+      for(const e of state.enemies){
+        if(e.dead){ e.respawn-=dt; e.mesh.visible=false; if(e.respawn<=0){e.dead=false;e.hp=e.maxhp;e.mesh.visible=true;} continue; }
+        e.t+=dt; e.attackCd=Math.max(0,e.attackCd-dt);
+        const distP=Math.hypot(e.x-p.x,e.z-p.z);
+        if(p.y<1.5 && distP<7) e.state='chase'; else if(e.state!=='attack') e.state='patrol';
+        if(e.state==='patrol'){ const ang=Math.sin(e.t*0.6+e.x*0.2)*Math.PI; e.x+=Math.cos(ang)*e.speed*0.1*dt; e.z+=Math.sin(ang)*e.speed*0.1*dt; }
+        else if(e.state==='chase'){ const vx=p.x-e.x, vz=p.z-e.z, L2=Math.hypot(vx,vz)||1; e.x+=(vx/L2)*e.speed*dt; e.z+=(vz/L2)*e.speed*dt;
+          if(L2<1.0 && e.attackCd<=0){ e.state='attack'; e.attackCd=1.1; e.mesh.scale.set(1.25,1.25,1.25); if(state.player.invul<=0){ state.player.hp=Math.max(0,state.player.hp-10); state.player.invul=0.6; } } }
+        else if(e.state==='attack'){ const s=e.mesh.scale.x, ns=1+(s-1)*0.85; e.mesh.scale.set(ns,ns,ns); if(ns<1.02){ e.mesh.scale.set(1,1,1); e.state='chase'; } }
+        e.x=clamp(e.x,-WORLD.w*0.5+1, WORLD.w*0.5-1); e.z=clamp(e.z,-WORLD.h*0.5+1, WORLD.h*0.5-1);
+        e.mesh.position.set(e.x,e.y,e.z); setBar(e.bar, e.hp/e.maxhp);
+      }
+
+      for(let i=state.meats.length-1;i>=0;i--){
+        const m=state.meats[i];
+        m.vy -= 9.8*dt; m.x += m.vx*dt; m.z += m.vz*dt; m.y += m.vy*dt;
+        if(m.y<0.3){ m.y=0.3; m.vy*=-0.35; m.vx*=0.92; m.vz*=0.92; }
+        m.life-=dt; if(m.life<=0){ scene.remove(m.mesh); state.meats.splice(i,1); continue; }
+        m.mesh.position.set(m.x,m.y,m.z);
+        if(p.y<1.5 && Math.hypot(m.x-p.x,m.z-p.z)<1.1 && state.player.carried<state.player.cap){ scene.remove(m.mesh); state.meats.splice(i,1); state.player.carried++; $car.textContent=state.player.carried; }
+      }
+
+      if(p.y<1.5 && Math.hypot(p.x-8,p.z-0)<1.2 && state.player.carried>0){
+        state.topQueue += state.player.carried; state.player.carried = 0; $car.textContent='0'; $que.textContent=state.topQueue;
+      }
+
+      if(state.topQueue>0){ state.topQueue -= Math.min(state.topQueue, 2*dt); if(state.topQueue<=0.01){ state.player.money += 5; state.topQueue=0; } }
+      $mny.textContent = state.player.money;
+
+      state.player.invul=Math.max(0,state.player.invul-dt);
+      playerMesh.material.emissive=new THREE.Color(state.player.invul>0?0x224466:0x000000);
+      $php.style.width=(state.player.hp/state.player.maxhp*100).toFixed(1)+'%';
+
+      renderer.render(scene,camera);
+    }
+    tick();
+  </script>
+</body>
+</html>
