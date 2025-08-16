@@ -1,56 +1,520 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Three.js sanity check • v0.1</title>
-  <style>
-    html,body{height:100%;margin:0;background:#0b1220;color:#cbd5e1;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif}
-    canvas{display:block}
-    #tag{position:fixed;right:10px;top:10px;background:rgba(2,6,23,.7);border:1px solid #334155;border-radius:8px;padding:6px 10px;font-size:12px;z-index:10}
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Meat Loop • Full Cycle (black hole, grill, drones)</title>
+<style>
+  html, body { height:100%; margin:0; background:#0b1220; color:#e5e7eb; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,system-ui,sans-serif; }
+  canvas { display:block; touch-action:none; }
+  #hud { position:fixed; left:12px; top:12px; background:rgba(2,6,23,.7); border:1px solid #334155; border-radius:12px; padding:10px 12px; font-size:12px; box-shadow:0 8px 24px rgba(0,0,0,.35); z-index:10; min-width:280px; }
+  #hud .row { display:flex; gap:10px; align-items:center; white-space:nowrap; }
+  .bar { width:160px; height:8px; background:#1f2937; border-radius:6px; overflow:hidden; border:1px solid #334155; }
+  .bar > div { height:100%; width:100%; background:#22c55e; transition:width .12s; }
+  #joy { position:fixed; left:16px; bottom:16px; width:140px; height:140px; border-radius:50%; background:rgba(15,23,42,.35); border:1px solid #334155; touch-action:none; z-index:11; }
+  #joy .knob { position:absolute; left:50%; top:50%; width:64px; height:64px; margin:-32px 0 0 -32px; border-radius:50%; background:rgba(30,41,59,.9); border:2px solid #475569; }
+  #dead { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.6); z-index:20; }
+  #dead .panel { background:#0f172a; border:1px solid #334155; padding:18px 22px; border-radius:12px; box-shadow:0 10px 28px rgba(0,0,0,.5); text-align:center; }
+  #dead .panel h1 { margin:0 0 8px; font-size:20px; }
+  #dead .panel p { margin:0; opacity:.85; font-size:13px; }
+  .tag { position:fixed; right:10px; top:10px; background:rgba(2,6,23,.7); border:1px solid #334155; border-radius:8px; padding:6px 10px; font-size:12px; z-index:10 }
+</style>
 </head>
 <body>
-  <div id="tag">sanity v0.1 • three r160</div>
+  <div id="hud">
+    <div class="row" style="font-weight:600; margin-bottom:4px;">Meat Loop • Full Cycle</div>
+    <div class="row" style="gap:8px; flex-wrap:wrap">
+      $: <b id="money">0</b>
+      | Raw carry: <b id="cRaw">0</b>
+      | Cooked carry: <b id="cCook">0</b>
+      | Cap: <b id="cap">20</b>
+    </div>
+    <div class="row" style="gap:8px; flex-wrap:wrap">
+      Raw store: <b id="sRaw">0</b>
+      | Cooked store: <b id="sCook">0</b>
+      | Load pad: <b id="sLoad">0</b>
+    </div>
+    <div class="row" style="gap:6px; margin-top:6px;">HP: <div class="bar"><div id="php"></div></div></div>
+  </div>
+  <div class="tag">r160 • full-cycle</div>
+  <div id="joy"><div class="knob"></div></div>
+  <div id="dead"><div class="panel"><h1>Ты умер</h1><p>Респавн через секунду у хижины</p></div></div>
+
   <script src="https://unpkg.com/three@0.160.0/build/three.min.js" onload="boot()" defer></script>
   <script>
-    function boot(){
-      console.log('Three version', THREE.REVISION);
-      const renderer = new THREE.WebGLRenderer({antialias:true});
-      renderer.setPixelRatio(Math.min(2, window.devicePixelRatio||1));
-      renderer.setSize(innerWidth, innerHeight);
-      document.body.appendChild(renderer.domElement);
-      window.addEventListener('resize', ()=>{
-        camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
-        renderer.setSize(innerWidth, innerHeight);
-      });
+  function boot(){
+    const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+    const rand=(a,b)=>a+Math.random()*(b-a);
+    const DPR=Math.min(2, window.devicePixelRatio||1);
+    const TAU=Math.PI*2;
 
-      const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x0b1220);
-      const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 1000);
-      camera.position.set(3,2.5,6);
+    // renderer
+    const renderer=new THREE.WebGLRenderer({antialias:true});
+    renderer.setPixelRatio(DPR); renderer.setSize(innerWidth,innerHeight);
+    renderer.shadowMap.enabled=true;
+    document.body.appendChild(renderer.domElement);
+    renderer.domElement.addEventListener('webglcontextlost',(e)=>{e.preventDefault();});
 
-      scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-      const dir = new THREE.DirectionalLight(0xffffff, 1.0);
-      dir.position.set(5,8,4); scene.add(dir);
+    // scene + camera
+    const scene=new THREE.Scene();
+    scene.background=new THREE.Color(0x0b1220);
+    scene.fog=new THREE.Fog(0x0b1220,24,150);
+    const camera=new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 500);
+    camera.position.set(0,16,22);
+    let camTarget=new THREE.Vector3(-9,3,2);
+    function updateCamera(){ camera.position.lerp(new THREE.Vector3(camTarget.x, camTarget.y+12.5, camTarget.z+19.5),0.18); camera.lookAt(camTarget); }
+    window.addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
 
-      const grid = new THREE.GridHelper(50, 50, 0x1f2937, 0x1f2937);
-      grid.position.y = -0.001; scene.add(grid);
+    // lights
+    scene.add(new THREE.AmbientLight(0xffffff,.55));
+    const dl=new THREE.DirectionalLight(0xffffff,1.05); dl.position.set(10,22,12); dl.castShadow=true; dl.shadow.mapSize.set(1024,1024); scene.add(dl);
+    scene.add(new THREE.HemisphereLight(0x88aaff,0x223355,.25));
 
-      const geo = new THREE.BoxGeometry(1,1,1);
-      const mat = new THREE.MeshStandardMaterial({color:0x3b82f6, metalness:0.2, roughness:0.5});
-      const cube = new THREE.Mesh(geo, mat); scene.add(cube);
+    // world
+    const WORLD={w:120,h:96}, hutY=3.2;
+    const floorLow=new THREE.Mesh(new THREE.PlaneGeometry(WORLD.w,WORLD.h), new THREE.MeshStandardMaterial({color:'#0b1220'}));
+    floorLow.rotation.x=-Math.PI/2; floorLow.receiveShadow=true; scene.add(floorLow);
+    const grid=new THREE.GridHelper(WORLD.w, 48, 0x162033, 0x162033); grid.position.y=0.01; scene.add(grid);
 
-      const clock = new THREE.Clock();
-      function tick(){
-        const t = clock.getElapsedTime();
-        cube.rotation.y = t * 0.6;
-        cube.rotation.x = t * 0.3;
-        renderer.render(scene, camera);
-        requestAnimationFrame(tick);
-      }
-      tick();
+    // hut + balcony
+    const hut = new THREE.Group(); scene.add(hut);
+    const hutFloor = new THREE.Mesh(new THREE.BoxGeometry(14, 0.6, 10), new THREE.MeshStandardMaterial({color:'#0f172a'}));
+    hutFloor.position.set(-9, hutY, 0); hutFloor.castShadow=true; hutFloor.receiveShadow=true; hut.add(hutFloor);
+    const wallMat = new THREE.MeshStandardMaterial({color:'#111827'});
+    const wallH = 2.2, t = 0.25;
+    const backWall = new THREE.Mesh(new THREE.BoxGeometry(14, wallH, t), wallMat); backWall.position.set(-9, hutY + wallH/2 + 0.3, -5); hut.add(backWall);
+    const leftWall = new THREE.Mesh(new THREE.BoxGeometry(t, wallH, 10), wallMat); leftWall.position.set(-16, hutY + wallH/2 + 0.3, 0); hut.add(leftWall);
+    const rightWall = new THREE.Mesh(new THREE.BoxGeometry(t, wallH, 10), wallMat); rightWall.position.set(-2, hutY + wallH/2 + 0.3, 0); hut.add(rightWall);
+    const frontLeft = new THREE.Mesh(new THREE.BoxGeometry(5, wallH, t), wallMat); frontLeft.position.set(-13.5, hutY + wallH/2 + 0.3, 5); hut.add(frontLeft);
+    const frontRight = new THREE.Mesh(new THREE.BoxGeometry(5, wallH, t), wallMat); frontRight.position.set(-4.5, hutY + wallH/2 + 0.3, 5); hut.add(frontRight);
+    const balcony = new THREE.Mesh(new THREE.BoxGeometry(6, 0.4, 4), new THREE.MeshStandardMaterial({color:'#1f2937'}));
+    balcony.position.set(-9, hutY+0.5, 5.8); balcony.castShadow=true; balcony.receiveShadow=true; hut.add(balcony);
+    const railMat = new THREE.MeshStandardMaterial({color:'#334155'});
+    const railL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.8, 4), railMat); railL.position.set(-12, hutY+1.1, 5.8); hut.add(railL);
+    const railR = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.8, 4), railMat); railR.position.set(-6, hutY+1.1, 5.8); hut.add(railR);
+
+    // stations (top)
+    const stationMatRaw = new THREE.MeshStandardMaterial({color:'#ef4444'});
+    const stationMatGrill = new THREE.MeshStandardMaterial({color:'#f59e0b'});
+    const stationMatMoney = new THREE.MeshStandardMaterial({color:'#22c55e'});
+    function stationBox(colorMat, x,z,label){
+      const base=new THREE.Mesh(new THREE.BoxGeometry(2,0.4,1.6), new THREE.MeshStandardMaterial({color:'#0b1325'}));
+      base.position.set(x, hutY+0.6, z); base.castShadow=true; base.receiveShadow=true; scene.add(base);
+      const cap=new THREE.Mesh(new THREE.BoxGeometry(1.6,0.2,1.2), colorMat); cap.position.set(x, hutY+0.9, z); cap.castShadow=true; cap.receiveShadow=true; scene.add(cap);
+      const c=document.createElement('canvas'); const s=128; c.width=c.height=s; const g=c.getContext('2d'); g.fillStyle='#0b1325'; g.fillRect(0,0,s,s); g.fillStyle='#cbd5e1'; g.font='bold 28px system-ui'; g.textAlign='center'; g.textBaseline='middle'; g.fillText(label,s/2,s/2);
+      const tex=new THREE.CanvasTexture(c); const mat=new THREE.MeshBasicMaterial({map:tex, transparent:true}); const pl=new THREE.Mesh(new THREE.PlaneGeometry(1.6,0.6), mat); pl.position.set(x, hutY+1.4, z); scene.add(pl);
+      return {pos:new THREE.Vector3(x,hutY+0.9,z)};
     }
+    const rawStation = stationBox(stationMatRaw, -13.2, -2.8, "СЫРОЕ");
+    const grillStation = stationBox(stationMatGrill, -9.0, -2.8, "ГРИЛЬ");
+    const moneyStation = stationBox(stationMatMoney, -4.8, -2.8, "ДЕНЬГИ");
+
+    // drone loading pad (top, near money station)
+    const loadPad = {x: moneyStation.pos.x, y: hutY+0.1, z: moneyStation.pos.z+1.8};
+    const loadRingOuter=new THREE.Mesh(new THREE.RingGeometry(0.8,1.2,48), new THREE.MeshBasicMaterial({color:'#cbd5e1'}));
+    loadRingOuter.rotation.x=-Math.PI/2; loadRingOuter.position.set(loadPad.x, 0.02, loadPad.z); scene.add(loadRingOuter);
+    const loadRingInner=new THREE.Mesh(new THREE.CircleGeometry(0.78,48), new THREE.MeshBasicMaterial({color:'#0b1220'}));
+    loadRingInner.rotation.x=-Math.PI/2; loadRingInner.position.set(loadPad.x,0.021,loadPad.z); scene.add(loadRingInner);
+
+    // elevator
+    const elevator={x:-9, z: 8.2, y: hutY+0.1, state:'idle', t:0};
+    const liftMesh=new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.3, 2.4), new THREE.MeshStandardMaterial({color:'#64748b'}));
+    liftMesh.castShadow=true; liftMesh.receiveShadow=true; scene.add(liftMesh);
+    const pillar=new THREE.Mesh(new THREE.BoxGeometry(0.3, hutY+0.3, 0.3), new THREE.MeshStandardMaterial({color:'#1f2937'}));
+    pillar.position.set(elevator.x, (hutY+0.3)/2, elevator.z); pillar.castShadow=true; pillar.receiveShadow=true; scene.add(pillar);
+
+    // black hole (ground, bottom)
+    const hole = {x: 0, z: -WORLD.h*0.45, r: 1.5};
+    const holeOuter=new THREE.Mesh(new THREE.RingGeometry(hole.r, hole.r+0.5, 48), new THREE.MeshBasicMaterial({color:'#94a3b8'}));
+    holeOuter.rotation.x=-Math.PI/2; holeOuter.position.set(hole.x, 0.02, hole.z); scene.add(holeOuter);
+    const holeInner=new THREE.Mesh(new THREE.CircleGeometry(hole.r*0.98,48), new THREE.MeshBasicMaterial({color:'#000000'}));
+    holeInner.rotation.x=-Math.PI/2; holeInner.position.set(hole.x,0.021,hole.z); scene.add(holeInner);
+
+    // stack tower helper
+    class StackTower {
+      constructor(color, cube=[0.22,0.14,0.22], step=0.16){
+        this.group=new THREE.Group(); this.count=0;
+        this.geo=new THREE.BoxGeometry(...cube);
+        this.mat=new THREE.MeshStandardMaterial({color});
+        this.step=step;
+      }
+      attachTo(parent){ parent.add(this.group); }
+      setPosition(x,y,z){ this.group.position.set(x,y,z); }
+      setCount(n){
+        n=Math.max(0,Math.floor(n));
+        if(n===this.count) return;
+        while(this.group.children.length<n){
+          const m=new THREE.Mesh(this.geo,this.mat); m.castShadow=true; m.receiveShadow=true; this.group.add(m);
+        }
+        while(this.group.children.length>n) this.group.remove(this.group.children[this.group.children.length-1]);
+        for(let i=0;i<this.group.children.length;i++){
+          this.group.children[i].position.set(0, i*this.step, 0);
+        }
+        this.count=n;
+      }
+    }
+
+    // state
+    const state={
+      last:performance.now(),
+      player:{x:-9,y:hutY+0.9,z:1.5, r:0.6, speed:7.2, level:'top',
+              hp:100,maxhp:100, invul:0, dps:12, atkCd:0, dead:false, respawn:0,
+              cap:20, invRaw:0, invCook:0},
+      meats:[], // ground raw/cooked pieces {type:'raw'|'cook', x,y,z,vx,vy,vz,mesh}
+      enemies:[],
+      flying:[], // {mesh, t, dur, from, via, to, onDone}
+      rawStored:0, cookedStored:0, loadCount:0, money:0,
+      drones:[],
+      keys:Object.create(null)
+    };
+
+    // HUD refs
+    const $money=document.getElementById('money');
+    const $cRaw=document.getElementById('cRaw');
+    const $cCook=document.getElementById('cCook');
+    const $cap=document.getElementById('cap');
+    const $sRaw=document.getElementById('sRaw');
+    const $sCook=document.getElementById('sCook');
+    const $sLoad=document.getElementById('sLoad');
+    const $php=document.getElementById('php');
+    $cap.textContent=state.player.cap;
+
+    // player mesh + backpacks (two towers: raw=red, cook=orange)
+    const gCapsule=new THREE.CapsuleGeometry(0.35,0.8,4,12);
+    const mPlayer=new THREE.MeshStandardMaterial({color:'#38bdf8',roughness:.65,metalness:.1});
+    const playerMesh=new THREE.Mesh(gCapsule,mPlayer); playerMesh.castShadow=true; scene.add(playerMesh);
+    const backRaw=new StackTower('#ef4444'); backRaw.attachTo(playerMesh); backRaw.setPosition(-0.18,0.05,-0.75);
+    const backCook=new StackTower('#f59e0b'); backCook.attachTo(playerMesh); backCook.setPosition(0.18,0.05,-0.75);
+    function refreshBackpack(){ backRaw.setCount(state.player.invRaw); backCook.setCount(state.player.invCook);
+      $cRaw.textContent=state.player.invRaw; $cCook.textContent=state.player.invCook; }
+
+    // storages (top)
+    const rawStack = new StackTower('#ef4444'); rawStack.setPosition(rawStation.pos.x, rawStation.pos.y+0.05, rawStation.pos.z); scene.add(rawStack.group);
+    const cookedStack = new StackTower('#f59e0b'); cookedStack.setPosition(grillStation.pos.x, grillStation.pos.y+0.05, grillStation.pos.z); scene.add(cookedStack.group);
+    const moneyStack = new StackTower('#22c55e'); moneyStack.setPosition(moneyStation.pos.x, moneyStation.pos.y+0.05, moneyStation.pos.z); scene.add(moneyStack.group);
+    function refreshStores(){ $sRaw.textContent=state.rawStored; $sCook.textContent=state.cookedStored; $sLoad.textContent=state.loadCount; rawStack.setCount(state.rawStored); cookedStack.setCount(state.cookedStored); moneyStack.setCount(state.money); $money.textContent=state.money; }
+
+    // enemies
+    const gEnemy=new THREE.SphereGeometry(0.35,18,18), mEnemy=new THREE.MeshStandardMaterial({color:'#f97316'});
+    function makeBar(w=0.7){ const g=new THREE.Group(); const bg=new THREE.Mesh(new THREE.PlaneGeometry(w,0.08), new THREE.MeshBasicMaterial({color:'#7f1d1d'})); const fg=new THREE.Mesh(new THREE.PlaneGeometry(w,0.08), new THREE.MeshBasicMaterial({color:'#22c55e'})); fg.position.set(-w/2,0,0); fg.userData.w=w; g.add(bg); g.add(fg); g.rotation.x=-Math.PI/2; g.position.y=0.95; g.userData.fg=fg; return g; }
+    function setBar(gr,ratio){ ratio=clamp(ratio,0,1); gr.userData.fg.scale.x=ratio; gr.userData.fg.position.x=-gr.userData.fg.userData.w/2*(1-ratio); }
+    function makeEnemy(x,z){
+      const mesh=new THREE.Mesh(gEnemy,mEnemy.clone()); mesh.castShadow=true; scene.add(mesh); const bar=makeBar(0.8); mesh.add(bar);
+      return {x,y:0.35,z,r:0.5,speed:5.0,mesh,bar,hp:30,maxhp:30,state:'wander',t:rand(0,TAU),attackCd:0,dead:false,respawn:0,aggro:rand(3,5),dir:rand(0,TAU)};
+    }
+    function farSpawn(){
+      let x,z; const px=state.player.x, pz=state.player.z;
+      do{ x=rand(-WORLD.w/2+2, WORLD.w/2-2); z=rand(-WORLD.h/2+2, WORLD.h/2-2); }while(Math.hypot(x-px,z-pz)<22);
+      return {x,z};
+    }
+    for(let i=0;i<12;i++){ const p=farSpawn(); state.enemies.push(makeEnemy(p.x,p.z)); }
+
+    // meat piece spawn
+    const gMeat=new THREE.BoxGeometry(0.22,0.14,0.22);
+    const matRaw=new THREE.MeshStandardMaterial({color:'#ef4444'});
+    const matCook=new THREE.MeshStandardMaterial({color:'#f59e0b'});
+    function spawnPiece(type,x,z,vy=2){
+      const mesh=new THREE.Mesh(gMeat, type==='raw'?matRaw:matCook); mesh.castShadow=true; scene.add(mesh);
+      const ang=Math.random()*TAU, s=rand(0.6,1.4);
+      return {type, x, y:0.3, z, vx:Math.cos(ang)*s, vz:Math.sin(ang)*s, vy, mesh, life:30, pickDelay:0.35};
+    }
+
+    // drone
+    function makeDrone(dockX, dockZ){
+      const g=new THREE.Group();
+      const body=new THREE.Mesh(new THREE.BoxGeometry(0.9,0.25,0.9), new THREE.MeshStandardMaterial({color:'#94a3b8'}));
+      const cap=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,0.02,12), new THREE.MeshStandardMaterial({color:'#e5e7eb'}));
+      g.add(body); for(let i=0;i<4;i++){ const p=cap.clone(); const ang=i*Math.PI/2; p.position.set(Math.cos(ang)*0.45,0.25,Math.sin(ang)*0.45); g.add(p); }
+      g.castShadow=true; scene.add(g);
+      return {mesh:g, x:dockX, y:hutY+1.6, z:dockZ, state:'idle', t:0, cap:8, load:0};
+    }
+    state.drones.push(makeDrone(loadPad.x, loadPad.z+0.2));
+
+    // input
+    window.addEventListener('keydown',e=> state.keys[e.key.toLowerCase()]=true);
+    window.addEventListener('keyup',e=> state.keys[e.key.toLowerCase()]=false);
+    const joy=document.getElementById('joy'), knob=joy.querySelector('.knob'); let joyId=null, joyVec={x:0,y:0};
+    function joySet(dx,dy){ const r=Math.min(joy.clientWidth,joy.clientHeight)/2-6; const L=Math.hypot(dx,dy); const k=L>r?r/L:1; knob.style.transform=`translate(${dx*k}px,${dy*k}px)`; joyVec.x=(dx*k)/r; joyVec.y=(dy*k)/r; }
+    joy.addEventListener('touchstart',e=>{const t=e.changedTouches[0];joyId=t.identifier;const r=joy.getBoundingClientRect();joySet(t.clientX-(r.left+r.width/2),t.clientY-(r.top+r.height/2));},{passive:false});
+    joy.addEventListener('touchmove',e=>{for(const t of e.changedTouches){if(t.identifier===joyId){const r=joy.getBoundingClientRect();joySet(t.clientX-(r.left+r.width/2),t.clientY-(r.top+r.height/2)); e.preventDefault();}}},{passive:false});
+    function joyReset(){ knob.style.transform=''; joyVec.x=0; joyVec.y=0; joyId=null; }
+    joy.addEventListener('touchend',()=>joyReset()); joy.addEventListener('touchcancel',()=>joyReset());
+
+    function addFlight(mesh, from, via, to, dur, onDone){ state.flying.push({mesh,from,via,to,t:0,dur,onDone}); }
+    function tickFlights(dt){
+      for(let i=state.flying.length-1;i>=0;i--){
+        const f=state.flying[i]; f.t+=dt; const k=clamp(f.t/f.dur,0,1);
+        const a=f.from,b=f.via,c=f.to;
+        const x=(1-k)*(1-k)*a.x + 2*(1-k)*k*b.x + k*k*c.x;
+        const y=(1-k)*(1-k)*a.y + 2*(1-k)*k*b.y + k*k*c.y;
+        const z=(1-k)*(1-k)*a.z + 2*(1-k)*k*b.z + k*k*c.z;
+        f.mesh.position.set(x,y,z);
+        if(k>=1){ const done=f.onDone; if(done) done(); scene.remove(f.mesh); state.flying.splice(i,1); }
+      }
+    }
+
+    function killPlayer(){ const p=state.player; if(p.dead) return; p.dead=true; p.respawn=1.0; document.getElementById('dead').style.display='flex'; }
+    function respawnPlayer(){ const p=state.player; p.dead=false; document.getElementById('dead').style.display='none'; p.x=-9; p.z=1.5; p.y=hutY+0.9; p.level='top'; p.hp=p.maxhp; p.invRaw=0; p.invCook=0; refreshBackpack(); }
+
+    // collisions (top level)
+    function blockByWallsTop(nx,nz){
+      const doorHalfW=1.6;
+      const insideRoom = (nx>-16 && nx<-2 && nz>-5 && nz<5);
+      if(insideRoom){
+        const inDoorX = (Math.abs(nx+9) < doorHalfW);
+        nx = clamp(nx, -16+0.6, -2-0.6);
+        if(inDoorX){ nz = clamp(nz, -5+0.6, 6.2); } else { nz = clamp(nz, -5+0.6, 4.4); }
+      }
+      if(nz>7.8) nz=7.8;
+      if(nx<-12.2 && nz>5) nx=-12.2;
+      if(nx>-5.8 && nz>5) nx=-5.8;
+      return {x:nx,z:nz};
+    }
+
+    // elevator logic (with 70% drop on stepping with cargo)
+    function onStepLiftAttemptGoingUp(){
+      const p=state.player;
+      const total=p.invRaw+p.invCook;
+      if(total>0){
+        const drop=Math.max(1, Math.floor(total*0.7));
+        // drop randomly from raw/cook
+        let dr=0, dc=0;
+        for(let i=0;i<drop;i++){
+          const choose = (p.invRaw>0 && p.invCook>0) ? (Math.random()<0.5?'raw':'cook') : (p.invRaw>0?'raw':'cook');
+          if(choose==='raw' && p.invRaw>0){ p.invRaw--; dr++; }
+          else if(choose==='cook' && p.invCook>0){ p.invCook--; dc++; }
+        }
+        refreshBackpack();
+        // spawn dropped pieces at lift base (ground level)
+        const baseY= (p.level==='top') ? elevator.y : 0.1;
+        for(let i=0;i<dr;i++){ state.meats.push(spawnPiece('raw', p.x, p.z, rand(1.6,3))); }
+        for(let i=0;i<dc;i++){ state.meats.push(spawnPiece('cook', p.x, p.z, rand(1.6,3))); }
+      }
+    }
+
+    // init positions
+    liftMesh.position.set(elevator.x, elevator.y, elevator.z);
+    playerMesh.position.set(state.player.x, state.player.y, state.player.z);
+    refreshBackpack(); refreshStores();
+
+    // main loop
+    const keys=state.keys;
+    function tick(){
+      requestAnimationFrame(tick);
+      const now=performance.now(); let dt=Math.min(1/50,(now-state.last)/1000); state.last=now;
+      const p=state.player;
+
+      if(p.dead){ p.respawn-=dt; if(p.respawn<=0) respawnPlayer(); renderer.render(scene,camera); return; }
+
+      // movement
+      let dx=0,dz=0;
+      if(keys['a']||keys['arrowleft'])dx-=1;
+      if(keys['d']||keys['arrowright'])dx+=1;
+      if(keys['w']||keys['arrowup'])dz-=1;
+      if(keys['s']||keys['arrowdown'])dz+=1;
+      // joystick
+      const joy=document.getElementById('joy'), knob=joy.querySelector('.knob');
+      // (joyVec updated by touch listeners)
+      dx += joyVec.x; dz += joyVec.y;
+
+      const L=Math.hypot(dx,dz)||1;
+      const loadPenalty=1-Math.min(0.6, ((p.invRaw+p.invCook)/p.cap)*0.5);
+      let nx=p.x+(dx/L)*p.speed*loadPenalty*dt;
+      let nz=p.z+(dz/L)*p.speed*loadPenalty*dt;
+      nx=clamp(nx,-WORLD.w*0.5+1, WORLD.w*0.5-1); nz=clamp(nz,-WORLD.h*0.5+1, WORLD.h*0.5-1);
+
+      // elevator
+      const onLift=Math.hypot(nx-elevator.x,nz-elevator.z)<1.0;
+      if(p.level==='top'){
+        if(onLift && elevator.state==='idle'){ elevator.state='down'; }
+      } else {
+        if(onLift && elevator.state==='idle'){
+          onStepLiftAttemptGoingUp();
+          elevator.state='up';
+        }
+      }
+      if(elevator.state==='down'){ elevator.y=Math.max(0.1, elevator.y-2.4*dt); if(elevator.y<=0.11){elevator.state='pause';elevator.t=0; p.level='ground';} }
+      else if(elevator.state==='up'){ elevator.y=Math.min(hutY+0.1, elevator.y+2.4*dt); if(elevator.y>=hutY+0.1){elevator.state='pause';elevator.t=0; p.level='top';} }
+      else if(elevator.state==='pause'){ elevator.t+=dt; if(elevator.t>0.5) elevator.state='idle'; }
+      liftMesh.position.set(elevator.x, elevator.y, elevator.z);
+      if(onLift){ p.y=elevator.y+0.8; } else { p.y = (p.level==='top') ? (hutY+0.8) : 0.8; }
+
+      // collisions
+      if(p.level==='top'){ const res=blockByWallsTop(nx,nz); nx=res.x; nz=res.z; }
+      if(p.level==='ground' && (nx>-12 && nx<-6 && nz>5)){ nz=5; } // no climbing balcony
+      p.x=nx; p.z=nz; playerMesh.position.set(p.x,p.y,p.z);
+
+      // camera
+      camTarget.lerp(new THREE.Vector3(p.x,p.y*0.5+0.6,p.z+0.6),0.22); updateCamera();
+
+      // combat + enemy AI
+      p.atkCd=Math.max(0,p.atkCd-dt);
+      if(p.level==='ground'){
+        let target=null, best=9e9;
+        for(const e of state.enemies){ if(e.dead) continue; const d=Math.hypot(e.x-p.x,e.z-p.z); if(d<best){best=d; target=e;} }
+        if(target && best<2.0 && p.atkCd<=0){
+          p.atkCd=0.25; target.hp -= p.dps*0.25; target.mesh.scale.set(1.25,1.25,1.25);
+          if(target.hp<=0){
+            target.dead=true; target.respawn=6; target.mesh.visible=false;
+            const count=Math.max(1, Math.floor(rand(1,4)));
+            for(let i=0;i<count;i++) state.meats.push(spawnPiece('raw', target.x, target.z, rand(2,3.6)));
+          }
+        }
+      }
+      for(const e of state.enemies){
+        if(e.dead){ e.respawn-=dt; if(e.respawn<=0){
+          const pnt=farSpawn(); e.x=pnt.x; e.z=pnt.z; e.dead=false; e.hp=e.maxhp; e.mesh.visible=true; e.mesh.scale.set(1,1,1);
+        } continue; }
+        e.t+=dt; e.attackCd=Math.max(0,e.attackCd-dt);
+        const dist=Math.hypot(e.x-p.x,e.z-p.z);
+        if(p.level==='ground' && dist<e.aggro){
+          const vx=p.x-e.x, vz=p.z-e.z, L2=Math.hypot(vx,vz)||1; e.x+=(vx/L2)*e.speed*dt; e.z+=(vz/L2)*e.speed*dt;
+          if(L2<1.1 && e.attackCd<=0){ e.attackCd=1.1; e.mesh.scale.set(1.3,1.3,1.3);
+            if(p.invul<=0){ p.hp=Math.max(0,p.hp-12); p.invul=0.6; if(p.hp<=0) killPlayer(); }
+          }
+        } else {
+          e.dir+=rand(-0.5,0.5)*dt; e.x+=Math.cos(e.dir)*e.speed*0.35*dt; e.z+=Math.sin(e.dir)*e.speed*0.35*dt;
+        }
+        e.x=clamp(e.x,-WORLD.w*0.5+1, WORLD.w*0.5-1); e.z=clamp(e.z,-WORLD.h*0.5+1, WORLD.h*0.5-1);
+        e.mesh.position.set(e.x,e.y,e.z); setBar(e.bar, e.hp/e.maxhp);
+        e.mesh.scale.lerp(new THREE.Vector3(1,1,1), 0.12);
+      }
+
+      // ground pieces physics + magnet pickup
+      for(let i=state.meats.length-1;i>=0;i--){
+        const m=state.meats[i];
+        m.vy-=9.8*dt; m.x+=m.vx*dt; m.z+=m.vz*dt; m.y+=m.vy*dt;
+        if(m.y<0.3){ m.y=0.3; m.vy*=-0.35; m.vx*=0.92; m.vz*=0.92; }
+        m.life-=dt; m.pickDelay=Math.max(0,m.pickDelay-dt);
+        m.mesh.position.set(m.x,m.y,m.z);
+        const total=p.invRaw+p.invCook;
+        if(p.level==='ground' && m.pickDelay<=0 && total< p.cap && Math.hypot(m.x-p.x,m.z-p.z)<1.1){
+          // magnet animation into proper backpack (raw or cook)
+          state.meats.splice(i,1);
+          const from=new THREE.Vector3(m.x,m.y,m.z);
+          const toLocal=new THREE.Vector3(m.type==='raw'?-0.18:0.18, (m.type==='raw'?p.invRaw:p.invCook)*0.16+0.05, -0.75);
+          const to=playerMesh.localToWorld(toLocal.clone());
+          const via=new THREE.Vector3((from.x+to.x)/2, Math.max(from.y,to.y)+1.6, (from.z+to.z)/2);
+          const mesh=m.mesh;
+          addFlight(mesh, from, via, to, 0.35, ()=>{
+            if(m.type==='raw') p.invRaw++; else p.invCook++;
+            refreshBackpack();
+          });
+        }
+      }
+
+      // black hole deposit (ground only, RAW only)
+      if(p.level==='ground' && p.invRaw>0){
+        const inHole = Math.hypot(p.x-hole.x, p.z-hole.z) < hole.r+0.3;
+        if(inHole){
+          const n=p.invRaw; p.invRaw=0; refreshBackpack();
+          for(let i=0;i<n;i++){
+            const g=new THREE.Mesh(gMeat, matRaw);
+            g.position.set(hole.x, 0.6, hole.z); scene.add(g);
+            const from=new THREE.Vector3(hole.x,0.6,hole.z);
+            const to=new THREE.Vector3(rawStation.pos.x + rand(-0.2,0.2), rawStation.pos.y+0.2, rawStation.pos.z + rand(-0.2,0.2));
+            const via=new THREE.Vector3(-9 + rand(-1,1), hutY+2.5, 2 + rand(-1,1));
+            addFlight(g, from, via, to, 1.0+Math.random()*0.4, ()=>{ state.rawStored++; refreshStores(); });
+          }
+        }
+      }
+
+      // top-level interactions: pickup from raw store; grill; pickup cooked; load pad
+      if(p.level==='top'){
+        // pickup raw from store
+        if(state.rawStored>0 && Math.hypot(p.x-rawStation.pos.x, p.z-rawStation.pos.z)<1.5 && (p.invRaw+p.invCook)<p.cap){
+          const g=new THREE.Mesh(gMeat, matRaw); g.position.set(rawStation.pos.x, rawStation.pos.y+0.2, rawStation.pos.z); scene.add(g);
+          const from=new THREE.Vector3(g.position.x,g.position.y,g.position.z);
+          const toLocal=new THREE.Vector3(-0.18, p.invRaw*0.16+0.05, -0.75); const to=playerMesh.localToWorld(toLocal.clone());
+          const via=new THREE.Vector3((from.x+to.x)/2, (from.y+to.y)+1.0, (from.z+to.z)/2);
+          addFlight(g, from, via, to, 0.4, ()=>{ p.invRaw++; state.rawStored--; refreshBackpack(); refreshStores(); });
+        }
+
+        // deposit raw to grill (auto)
+        if(p.invRaw>0 && Math.hypot(p.x-grillStation.pos.x, p.z-grillStation.pos.z)<1.5){
+          const count=Math.min(p.invRaw, 2); // move up to 2 at a time
+          for(let i=0;i<count;i++){
+            p.invRaw--; refreshBackpack();
+            const g=new THREE.Mesh(gMeat, matRaw); g.position.copy(playerMesh.position); scene.add(g);
+            const from=new THREE.Vector3(g.position.x,g.position.y,g.position.z);
+            const to=new THREE.Vector3(grillStation.pos.x + rand(-0.2,0.2), grillStation.pos.y+0.2, grillStation.pos.z + rand(-0.2,0.2));
+            const via=new THREE.Vector3((from.x+to.x)/2, hutY+2.3, (from.z+to.z)/2);
+            addFlight(g, from, via, to, 0.5, ()=>{
+              // start cooking timer
+              setTimeout(()=>{ state.cookedStored++; refreshStores(); }, 900);
+            });
+          }
+        }
+
+        // pickup cooked from store
+        if(state.cookedStored>0 && Math.hypot(p.x-grillStation.pos.x, p.z-grillStation.pos.z)<1.5 && (p.invRaw+p.invCook)<p.cap){
+          const g=new THREE.Mesh(gMeat, matCook); g.position.set(grillStation.pos.x, grillStation.pos.y+0.2, grillStation.pos.z); scene.add(g);
+          const from=new THREE.Vector3(g.position.x,g.position.y,g.position.z);
+          const toLocal=new THREE.Vector3(0.18, p.invCook*0.16+0.05, -0.75); const to=playerMesh.localToWorld(toLocal.clone());
+          const via=new THREE.Vector3((from.x+to.x)/2, (from.y+to.y)+1.0, (from.z+to.z)/2);
+          addFlight(g, from, via, to, 0.4, ()=>{ p.invCook++; state.cookedStored--; refreshBackpack(); refreshStores(); });
+        }
+
+        // load pad: offload cooked from backpack to pad (then drones take it)
+        if(p.invCook>0 && Math.hypot(p.x-loadPad.x, p.z-loadPad.z)<1.2){
+          const n=Math.min(p.invCook, 2);
+          for(let i=0;i<n;i++){
+            p.invCook--; refreshBackpack();
+            const g=new THREE.Mesh(gMeat, matCook); g.position.copy(playerMesh.position); scene.add(g);
+            const from=new THREE.Vector3(g.position.x,g.position.y,g.position.z);
+            const to=new THREE.Vector3(loadPad.x + rand(-0.15,0.15), hutY+0.3, loadPad.z + rand(-0.15,0.15));
+            const via=new THREE.Vector3((from.x+to.x)/2, hutY+2.0, (from.z+to.z)/2);
+            addFlight(g, from, via, to, 0.45, ()=>{ state.loadCount++; refreshStores(); });
+          }
+        }
+      }
+
+      // drones: pick only from load pad
+      for(const d of state.drones){
+        if(d.state==='idle'){
+          d.mesh.position.set(d.x, d.y, d.z);
+          if(state.loadCount>0){
+            d.load=Math.min(d.cap, state.loadCount); state.loadCount-=d.load; refreshStores();
+            d.state='out'; d.t=0;
+          }
+        } else if(d.state==='out'){
+          d.t+=dt; const k=clamp(d.t/1.2,0,1);
+          d.mesh.position.set(d.x+12*k, d.y+1.5*Math.sin(k*Math.PI), d.z+14*k);
+          if(k>=1){ d.state='back'; d.t=0; }
+        } else if(d.state==='back'){
+          d.t+=dt; const k=clamp(d.t/1.4,0,1);
+          d.mesh.position.set(d.x+12*(1-k), d.y+1.2*Math.sin((1-k)*Math.PI), d.z+14*(1-k));
+          if(k>=1){
+            for(let i=0;i<d.load;i++){
+              const coin=new THREE.Mesh(new THREE.BoxGeometry(0.22,0.1,0.22), new THREE.MeshStandardMaterial({color:'#22c55e'}));
+              coin.position.set(d.x, d.y-0.6, d.z); coin.castShadow=true; scene.add(coin);
+              const to=new THREE.Vector3(moneyStation.pos.x + rand(-0.2,0.2), moneyStation.pos.y+0.2, moneyStation.pos.z + rand(-0.2,0.2));
+              addFlight(coin, new THREE.Vector3(d.x,d.y-0.6,d.z), new THREE.Vector3((d.x+to.x)/2, hutY+2.0, (d.z+to.z)/2), to, 0.6, ()=>{ state.money++; refreshStores(); });
+            }
+            d.load=0; d.state='idle';
+          }
+        }
+      }
+
+      // player HP / UI
+      state.player.invul=Math.max(0,state.player.invul-dt);
+      playerMesh.material.emissive=new THREE.Color(state.player.invul>0?0x224466:0x000000);
+      $php.style.width=(state.player.hp/state.player.maxhp*100).toFixed(0)+'%';
+      renderer.render(scene,camera);
+    }
+
+    // joystick vec (closure)
+    let joyVec={x:0,y:0};
+    function joySet(dx,dy){ const joy=document.getElementById('joy'), knob=joy.querySelector('.knob'); const r=Math.min(joy.clientWidth,joy.clientHeight)/2-6; const L=Math.hypot(dx,dy); const k=L>r?r/L:1; knob.style.transform=`translate(${dx*k}px,${dy*k}px)`; joyVec.x=(dx*k)/r; joyVec.y=(dy*k)/r; }
+    const joyEl=document.getElementById('joy');
+    let joyId=null;
+    joyEl.addEventListener('touchstart',e=>{const t=e.changedTouches[0];joyId=t.identifier;const r=joyEl.getBoundingClientRect();joySet(t.clientX-(r.left+r.width/2),t.clientY-(r.top+r.height/2));},{passive:false});
+    joyEl.addEventListener('touchmove',e=>{for(const t of e.changedTouches){if(t.identifier===joyId){const r=joyEl.getBoundingClientRect();joySet(t.clientX-(r.left+r.width/2),t.clientY-(r.top+r.height/2)); e.preventDefault();}}},{passive:false});
+    function joyReset(){ const knob=document.querySelector('#joy .knob'); knob.style.transform=''; joyVec.x=0; joyVec.y=0; joyId=null; }
+    joyEl.addEventListener('touchend',()=>joyReset()); joyEl.addEventListener('touchcancel',()=>joyReset());
+
+    tick();
+  }
   </script>
 </body>
 </html>
